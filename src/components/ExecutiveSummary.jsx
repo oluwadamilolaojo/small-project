@@ -113,7 +113,7 @@ export default function ExecutiveSummary({ portfolio, currency, fxRate }) {
         <PrimaryCard
           label="Portfolio buffer (excl. training camp)"
           value={(portfolioBuffer * 100).toFixed(1) + '%'}
-          sub={`${activeActual - activeBillable} excess heads · target ≤20%`}
+          sub={`${Math.round(activeActual - activeBillable)} excess heads · target ≤20%`}
           icon={Users}
           color={bufColor(portfolioBuffer)}
           flag={portfolioBuffer > 0.20 ? 'Above 20% target' : null}
