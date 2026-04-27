@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useMemo } from 'react'
 import Sidebar from './components/Sidebar'
 import ExecutiveSummary from './components/ExecutiveSummary'
 import ProjectTable from './components/ProjectTable'
@@ -11,6 +11,7 @@ import HealthAndBenchmark from './components/HealthAndBenchmark'
 import PoolingSimulator from './components/PoolingSimulator'
 import { INITIAL_PROJECTS, SALARY_BANDS, DEFAULTS } from './data/projects'
 import { calcPortfolio } from './engine'
+import { usePersistedState, clearPersistedState } from './hooks/usePersistedState'
 
 const TABS = [
   { id: 'overview',  label: 'Overview' },
@@ -32,12 +33,14 @@ const TAB_DESCRIPTIONS = {
   tracker:   'Lock a baseline and track month-over-month changes',
 }
 
+const STORAGE_KEYS = ['sp_projects','sp_salaries','sp_config','sp_currency','sp_tab']
+
 export default function App() {
-  const [projects,  setProjects]  = useState(INITIAL_PROJECTS.map(p => ({ ...p, status: 'active', note: '' })))
-  const [salaries,  setSalaries]  = useState(SALARY_BANDS)
-  const [config,    setConfig]    = useState(DEFAULTS)
-  const [currency,  setCurrency]  = useState('USD')
-  const [activeTab, setActiveTab] = useState('overview')
+  const [projects,  setProjects]  = usePersistedState('sp_projects',  INITIAL_PROJECTS)
+  const [salaries,  setSalaries]  = usePersistedState('sp_salaries',  SALARY_BANDS)
+  const [config,    setConfig]    = usePersistedState('sp_config',     DEFAULTS)
+  const [currency,  setCurrency]  = usePersistedState('sp_currency',  'USD')
+  const [activeTab, setActiveTab] = usePersistedState('sp_tab',       'overview')
 
   const portfolio = useMemo(
     () => calcPortfolio(projects, salaries, config),
@@ -46,17 +49,24 @@ export default function App() {
 
   const now = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
+  function resetToDefaults() {
+    if (window.confirm('Reset all data to defaults? This cannot be undone.')) {
+      clearPersistedState(STORAGE_KEYS)
+      window.location.reload()
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar
         config={config} setConfig={setConfig}
         salaries={salaries} setSalaries={setSalaries}
         currency={currency} setCurrency={setCurrency}
+        onReset={resetToDefaults}
       />
-
       <main className="flex-1 overflow-auto flex flex-col">
 
-        {/* Main area header */}
+        {/* Main header */}
         <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Small Projects · {now}</h2>
@@ -66,18 +76,17 @@ export default function App() {
             <span className="text-xs text-gray-400">{projects.length} projects</span>
             <span className="w-1 h-1 rounded-full bg-gray-300"></span>
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-              portfolio.portfolioBuffer > 0.3
-                ? 'bg-red-50 text-red-600'
-                : portfolio.portfolioBuffer > 0.2
-                ? 'bg-amber-50 text-amber-600'
-                : 'bg-green-50 text-green-600'
+              portfolio.portfolioBuffer > 0.3  ? 'bg-red-50 text-red-600'   :
+              portfolio.portfolioBuffer > 0.2  ? 'bg-amber-50 text-amber-600' :
+              'bg-green-50 text-green-600'
             }`}>
-              {Math.round(portfolio.portfolioBuffer * 100)}% buffer
+              {(portfolio.portfolioBuffer * 100).toFixed(1)}% buffer
             </span>
+            <span className="text-xs text-gray-300">· auto-saved</span>
           </div>
         </div>
 
-        {/* Tab bar */}
+        {/* Tabs */}
         <div className="bg-white border-b border-gray-100 px-6 flex items-center gap-0 overflow-x-auto flex-shrink-0">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
@@ -95,48 +104,13 @@ export default function App() {
         <div className="px-6 py-5 space-y-4 flex-1">
           <ExecutiveSummary portfolio={portfolio} currency={currency} fxRate={config.fxRate} />
 
-          {activeTab === 'overview' && (
-            <>
-              <Charts computed={portfolio.rows} />
-              <BufferConcentration computed={portfolio.rows} />
-            </>
-          )}
-
-          {activeTab === 'projects' && (
-            <ProjectTable
-              projects={projects} setProjects={setProjects}
-              computed={portfolio.rows} currency={currency} fxRate={config.fxRate}
-            />
-          )}
-
-          {activeTab === 'scenarios' && (
-            <ScenarioPanel
-              portfolio={portfolio} salaries={salaries} config={config}
-              currency={currency} fxRate={config.fxRate}
-            />
-          )}
-
-          {activeTab === 'charts' && (
-            <>
-              <Charts computed={portfolio.rows} />
-              <BufferConcentration computed={portfolio.rows} />
-            </>
-          )}
-
-          {activeTab === 'health' && (
-            <>
-              <HealthAndBenchmark computed={portfolio.rows} currency={currency} fxRate={config.fxRate} />
-              <BreakEvenCalculator computed={portfolio.rows} currency={currency} fxRate={config.fxRate} />
-            </>
-          )}
-
-          {activeTab === 'pooling' && (
-            <PoolingSimulator computed={portfolio.rows} />
-          )}
-
-          {activeTab === 'tracker' && (
-            <MoMTracker portfolio={portfolio} currency={currency} fxRate={config.fxRate} />
-          )}
+          {activeTab === 'overview'  && <><Charts computed={portfolio.rows} /><BufferConcentration computed={portfolio.rows} /></>}
+          {activeTab === 'projects'  && <ProjectTable projects={projects} setProjects={setProjects} computed={portfolio.rows} currency={currency} fxRate={config.fxRate} />}
+          {activeTab === 'scenarios' && <ScenarioPanel portfolio={portfolio} salaries={salaries} config={config} currency={currency} fxRate={config.fxRate} />}
+          {activeTab === 'charts'    && <><Charts computed={portfolio.rows} /><BufferConcentration computed={portfolio.rows} /></>}
+          {activeTab === 'health'    && <><HealthAndBenchmark computed={portfolio.rows} currency={currency} fxRate={config.fxRate} /><BreakEvenCalculator computed={portfolio.rows} currency={currency} fxRate={config.fxRate} /></>}
+          {activeTab === 'pooling'   && <PoolingSimulator computed={portfolio.rows} />}
+          {activeTab === 'tracker'   && <MoMTracker portfolio={portfolio} currency={currency} fxRate={config.fxRate} />}
         </div>
       </main>
     </div>

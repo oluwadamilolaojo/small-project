@@ -45,7 +45,7 @@ function SectionHeader({ icon: Icon, label }) {
   )
 }
 
-export default function Sidebar({ config, setConfig, salaries, setSalaries, currency, setCurrency }) {
+export default function Sidebar({ config, setConfig, salaries, setSalaries, currency, setCurrency, onReset }) {
   const update    = (key, val) => setConfig(c => ({ ...c, [key]: val }))
   const updateSal = (key, val) => setSalaries(s => ({ ...s, [key]: val }))
 
@@ -113,8 +113,12 @@ export default function Sidebar({ config, setConfig, salaries, setSalaries, curr
         <NumInput label="PC / PM (Band 1)"  value={salaries.pc}    onChange={v => updateSal('pc', v)}    hint="NGN/mo" />
       </div>
 
-      <div className="px-5 py-3 border-t border-gray-100">
-        <p className="text-xs text-gray-300">v2.2 · Internal use only</p>
+      <div className="px-5 py-3 border-t border-gray-100 space-y-2">
+        <button onClick={onReset}
+          className="w-full text-xs text-gray-300 hover:text-red-400 transition-colors text-left">
+          Reset to defaults
+        </button>
+        <p className="text-xs text-gray-300">v2.3 · Auto-saved locally</p>
       </div>
     </aside>
   )

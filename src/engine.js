@@ -9,6 +9,20 @@ export function calcProject(p, salaries, config) {
   const billableHeads = p.billableAgents + p.billableQA + p.billableTL + p.billablePC
   const actualHeads   = p.actualAgents   + p.actualQA   + p.actualTL   + p.actualPC
 
+  // Split buffer into agent buffer vs lead buffer
+  const agentBillable = p.billableAgents + p.billableQA
+  const agentActual   = p.actualAgents   + p.actualQA
+  const leadBillable  = p.billableTL     + p.billablePC
+  const leadActual    = p.actualTL       + p.actualPC
+
+  const agentBuffer = agentBillable > 0
+    ? (agentActual - agentBillable) / agentBillable
+    : agentActual > 0 ? 1 : 0
+
+  const leadBuffer  = leadBillable > 0
+    ? (leadActual - leadBillable) / leadBillable
+    : leadActual > 0 ? 1 : 0
+
   const billableHours = billableHeads * hours * (utilization / 100)
   const revenue       = billableHours * p.rate
 
@@ -22,11 +36,10 @@ export function calcProject(p, salaries, config) {
   const trainingCost = actualHeads * training
   const itCost       = actualHeads * it
   const overheadCost = revenue * (overhead / 100)
+  const totalCost    = salaryCost + ctcCost + trainingCost + itCost + overheadCost
 
-  const totalCost = salaryCost + ctcCost + trainingCost + itCost + overheadCost
-
-  // Buffer: how much over billable is actual — (actual - billable) / billable
-  const buffer  = billableHeads > 0 ? (actualHeads - billableHeads) / billableHeads : 0
+  // Overall buffer = (actual - billable) / billable
+  const buffer  = billableHeads > 0 ? (actualHeads - billableHeads) / billableHeads : actualHeads > 0 ? 1 : 0
   const leakage = (actualHeads - billableHeads) * hours * p.rate
 
   const grossMargin = revenue - totalCost
@@ -36,6 +49,12 @@ export function calcProject(p, salaries, config) {
     ...p,
     billableHeads,
     actualHeads,
+    agentBillable,
+    agentActual,
+    leadBillable,
+    leadActual,
+    agentBuffer,
+    leadBuffer,
     billableHours,
     revenue,
     salaryCost,
@@ -54,54 +73,74 @@ export function calcProject(p, salaries, config) {
 export function calcPortfolio(projects, salaries, config) {
   const rows = projects.map(p => calcProject(p, salaries, config))
 
-  const totalRevenue      = rows.reduce((s, r) => s + r.revenue,      0)
-  const totalCost         = rows.reduce((s, r) => s + r.totalCost,     0)
-  const totalLeakage      = rows.reduce((s, r) => s + r.leakage,       0)
-  const totalBillable     = rows.reduce((s, r) => s + r.billableHeads, 0)
-  const totalActual       = rows.reduce((s, r) => s + r.actualHeads,   0)
+  // Exclude training camp projects from headline buffer
+  const activeRows    = rows.filter(r => !r.trainingCamp)
+  const allRows       = rows
 
-  const portfolioBuffer   = totalBillable > 0 ? (totalActual - totalBillable) / totalBillable : 0
-  const portfolioMargin   = totalRevenue  > 0 ? (totalRevenue - totalCost) / totalRevenue : 0
-  const grossMargin       = totalRevenue - totalCost
+  const totalRevenue  = allRows.reduce((s, r) => s + r.revenue,      0)
+  const totalCost     = allRows.reduce((s, r) => s + r.totalCost,     0)
+  const totalLeakage  = allRows.reduce((s, r) => s + r.leakage,       0)
+  const totalBillable = allRows.reduce((s, r) => s + r.billableHeads, 0)
+  const totalActual   = allRows.reduce((s, r) => s + r.actualHeads,   0)
+
+  // Headline buffer excludes training camp
+  const activeBillable = activeRows.reduce((s, r) => s + r.billableHeads, 0)
+  const activeActual   = activeRows.reduce((s, r) => s + r.actualHeads,   0)
+  const portfolioBuffer = activeBillable > 0 ? (activeActual - activeBillable) / activeBillable : 0
+
+  // Agent vs lead buffer split (active only)
+  const totalAgentBillable = activeRows.reduce((s, r) => s + r.agentBillable, 0)
+  const totalAgentActual   = activeRows.reduce((s, r) => s + r.agentActual,   0)
+  const totalLeadBillable  = activeRows.reduce((s, r) => s + r.leadBillable,  0)
+  const totalLeadActual    = activeRows.reduce((s, r) => s + r.leadActual,    0)
+
+  const portfolioAgentBuffer = totalAgentBillable > 0 ? (totalAgentActual - totalAgentBillable) / totalAgentBillable : 0
+  const portfolioLeadBuffer  = totalLeadBillable  > 0 ? (totalLeadActual  - totalLeadBillable)  / totalLeadBillable  : 0
+
+  const portfolioMargin = totalRevenue > 0 ? (totalRevenue - totalCost) / totalRevenue : 0
+  const grossMargin     = totalRevenue - totalCost
+
+  const trainingCampCount = rows.filter(r => r.trainingCamp).length
 
   return {
     rows,
+    activeRows,
     totalRevenue,
     totalCost,
     grossMargin,
     totalLeakage,
     totalBillable,
     totalActual,
+    activeBillable,
+    activeActual,
     portfolioBuffer,
+    portfolioAgentBuffer,
+    portfolioLeadBuffer,
     portfolioMargin,
+    trainingCampCount,
+    totalAgentBillable,
+    totalAgentActual,
+    totalLeadBillable,
+    totalLeadActual,
   }
 }
 
-// Auto-solve: given a target buffer %, what are the options?
 export function autoSolve(portfolio, targetBufferPct, salaries, config) {
   const { fxRate, hours } = config
-  const agentUSD = salaries.agent / fxRate
-
-  const currentBuffer = portfolio.portfolioBuffer
-  const excessHeads   = portfolio.totalActual - portfolio.totalBillable
-  const targetActual  = Math.ceil(portfolio.totalBillable * (1 + targetBufferPct / 100))
-  const headsToReduce = Math.max(0, portfolio.totalActual - targetActual)
-
-  // Option A: reduce headcount
+  const agentUSD   = salaries.agent / fxRate
+  const excessHeads = portfolio.activeActual - portfolio.activeBillable
+  const targetActual = Math.ceil(portfolio.activeBillable * (1 + targetBufferPct / 100))
+  const headsToReduce = Math.max(0, portfolio.activeActual - targetActual)
   const costSavedByReduction = headsToReduce * agentUSD * (1 + config.ctc / 100)
-
-  // Option B: increase rate to bill all actuals
-  const totalActualHours  = portfolio.totalActual * hours * (config.utilization / 100)
-  const requiredRateForAll = portfolio.totalCost / totalActualHours
-
-  // Option C: convert excess to billable (renegotiate)
+  const totalActualHours = portfolio.activeActual * hours * (config.utilization / 100)
+  const requiredRateForAll = portfolio.totalCost / totalActualHours || 0
   const convertibleHeads = excessHeads - headsToReduce
-  const additionalRevenue = convertibleHeads * hours * (config.utilization / 100) *
-    (portfolio.totalRevenue / (portfolio.totalBillable * hours * config.utilization / 100) || 0)
+  const avgRate = portfolio.totalRevenue / (portfolio.activeBillable * hours * config.utilization / 100) || 0
+  const additionalRevenue = convertibleHeads * hours * (config.utilization / 100) * avgRate
 
   return {
-    currentBuffer:      Math.round(currentBuffer * 100),
-    targetBuffer:       targetBufferPct,
+    currentBuffer: Math.round(portfolio.portfolioBuffer * 100),
+    targetBuffer:  targetBufferPct,
     excessHeads,
     headsToReduce,
     targetActual,
