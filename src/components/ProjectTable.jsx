@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, MessageSquare } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, MessageSquare, Tent } from 'lucide-react'
 
-function bufferBadge(buf) {
+function bufferBadge(buf, isTrainingCamp = false) {
   const pct = Math.round(buf * 100)
-  if (buf <= 0)    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">0%</span>
-  if (buf <= 0.1)  return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{pct}%</span>
-  if (buf <= 0.2)  return <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">{pct}%</span>
-  if (buf <= 0.4)  return <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">{pct}%</span>
-  return               <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">{pct}%</span>
+  if (isTrainingCamp) return <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">⛺ {pct}%</span>
+  if (buf <= 0.20) return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{pct}%</span>
+  if (buf <= 0.30) return <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">{pct}%</span>
+  if (buf <= 0.50) return <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">{pct}%</span>
+  return <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">{pct}%</span>
 }
 
 const STATUS_OPTIONS = ['active','ramp','at risk','renegotiating','ending']
@@ -100,7 +100,7 @@ export default function ProjectTable({ projects, setProjects, computed, currency
               if (!p) return null
               return (
                 <React.Fragment key={p.id}>
-                  <tr className={`hover:bg-gray-50 transition-colors ${row.buffer > 0.4 ? 'bg-red-50/30' : ''}`}>
+                  <tr className={`hover:bg-gray-50 transition-colors ${p.trainingCamp ? 'bg-blue-50/20' : row.buffer > 0.4 ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-1.5">
                       <input type="text" value={p.name} onChange={e => updateProject(p.id, 'name', e.target.value)}
                         className="w-full bg-transparent text-gray-800 text-xs outline-none hover:bg-gray-100 focus:bg-blue-50 rounded px-1 py-0.5 font-medium"/>
@@ -128,7 +128,7 @@ export default function ProjectTable({ projects, setProjects, computed, currency
                         <Cell val={p[f]} onChange={v => updateProject(p.id, f, v)} />
                       </td>
                     ))}
-                    <td className="px-2 py-1.5 text-center">{bufferBadge(row.buffer)}</td>
+                    <td className="px-2 py-1.5 text-center">{bufferBadge(row.buffer, p.trainingCamp)}</td>
                     <td className="px-2 py-1.5 text-center text-gray-700">{sym}{(row.revenue*fx).toLocaleString('en-US',{maximumFractionDigits:0})}</td>
                     <td className="px-2 py-1.5 text-center text-gray-700">{(row.marginPct*100).toFixed(0)}%</td>
                     <td className="px-2 py-1.5 text-center text-amber-600">{sym}{(row.leakage*fx).toLocaleString('en-US',{maximumFractionDigits:0})}</td>
@@ -152,6 +152,11 @@ export default function ProjectTable({ projects, setProjects, computed, currency
                           <input type="text" placeholder="e.g. In renegotiation · client expanding · at risk..."
                             value={p.note || ''} onChange={e => updateProject(p.id, 'note', e.target.value)}
                             className="flex-1 text-xs bg-white border border-blue-100 rounded-lg px-3 py-1.5 outline-none focus:border-blue-300 text-gray-700"/>
+                          <button
+                            onClick={() => updateProject(p.id, 'trainingCamp', !p.trainingCamp)}
+                            className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${p.trainingCamp ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-gray-400 border-gray-200 hover:border-blue-200'}`}>
+                            <Tent size={11} /> Training camp
+                          </button>
                         </div>
                       </td>
                     </tr>
